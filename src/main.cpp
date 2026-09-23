@@ -13,7 +13,49 @@ uint16_t dmxInputAddress = 0;
 uint64_t lastDmxPoll = 0;
 const uint16_t dmxPollInterval = 5; // 200Hz dmx update rate
 uint64_t lastDmxSendUpdate = 0;
-const uint16_t dmxSendUpdateInterval = 23; // 44hz dmx send update rate
+const uint16_t dmxSendUpdateInterval = 1000; // 1kHz dmx send update rate
+
+// dithering experiment
+#define COLOR_MAX_16BIT 500
+
+// =====================================================
+// Generic N-bit -> 8-bit temporal dither
+// =====================================================
+
+class DitherTo8 {
+public:
+    DitherTo8(uint8_t inputBits)
+    {
+        shift = inputBits - 8;
+        threshold = 1U << shift;
+        mask = threshold - 1;
+    }
+
+    uint8_t convert(uint16_t value)
+    {
+        static uint16_t previousValue = 0;
+        uint8_t out = value >> shift;
+
+        if (abs((int)value - (int)previousValue) > 32) {
+            acc >>= 1;  //this should reduce low level flicker
+        }
+
+        acc += (value & mask);
+
+        if (acc >= threshold) {
+            out++;
+            acc -= threshold;
+        }
+        previousValue = value;
+        return out;
+    }
+
+private:
+    uint16_t acc = 0;
+    uint16_t threshold;
+    uint16_t mask;
+    uint8_t shift;
+};
 
 void onDMXReceived()
 {
@@ -91,9 +133,9 @@ void dmxUpdateStrobe()
     static int16_t masterValue = 0;
     static bool probeState = false;
 
-    if(probeState){
+    if (probeState) {
         masterValue = 100;
-    } else{
+    } else {
         masterValue = 0;
     }
 
@@ -107,6 +149,25 @@ void dmxUpdateStrobe()
     updateDMXOutput(6); // send 6 channels of data
 }
 
+// =====================================================
+// Ditherers
+// =====================================================
+
+DitherTo8 redDither(16);
+DitherTo8 greenDither(16);
+DitherTo8 blueDither(16);
+
+// =====================================================
+// Generate a 16-bit sine fade
+// =====================================================
+
+uint16_t fade16(float phase)
+{
+    float s = (sinf(phase) + 1.0f) * 0.5f;
+
+    return (uint16_t)(s * COLOR_MAX_16BIT + 0.5f);
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -114,8 +175,8 @@ void setup()
     setupSlotworks();
     setupDMX(onDMXReceived, UART_NUM_1); // setup DMX on uart 1
     enableDMXOutput(true); // enable DMX output
-    setUserInterfaceMode(DMXADDR, updateDMXAddress); // set the user interface mode to dmx input address mode
-    setUserInterfaceMode(VALUE);
+    // setUserInterfaceMode(DMXADDR, updateDMXAddress); // set the user interface mode to dmx input address mode
+    // setUserInterfaceMode(VALUE);
 }
 
 void loop()
@@ -130,9 +191,20 @@ void loop()
     //     updateDMXInput();
     // }
 
-    if (millis() - lastDmxSendUpdate >= dmxSendUpdateInterval) {
-        lastDmxSendUpdate = millis();
-        // updateDMXOutputRainbow();
-        dmxUpdateStrobe();
+    //     if (millis() - lastDmxSendUpdate >= dmxSendUpdateInterval) {
+    //         lastDmxSendUpdate = millis();
+    //         // updateDMXOutputRainbow();
+    //         dmxUpdateStrobe();
+    //     }
+
+    uint64_t now = micros();
+    if (now - lastDmxSendUpdate >= dmxSendUpdateInterval) {
+        lastDmxSendUpdate = now;
+        float t = millis() * 0.001f;
+        uint16_t brightness = fade16(t / 5.0f); // fade 0.1Hz
+        dmxSetByte(dmxOutputAddress, redDither.convert(brightness));
+        dmxSetByte(dmxOutputAddress + 1, greenDither.convert(brightness));
+        dmxSetByte(dmxOutputAddress + 2, blueDither.convert(brightness));
+        updateDMXOutput(4); // send 4 channels of data
     }
 }
