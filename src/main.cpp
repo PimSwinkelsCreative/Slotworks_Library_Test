@@ -17,14 +17,14 @@ uint64_t lastSerialPrintMs = 0;
 // DMX Dither configuration :
 // currently configured for ETC Desire in 10 channel direct mode
 const uint16_t numberOfDitherChannels = 8; // number of dither channels to output
-const uint16_t numberOfUnditheredchannels = 10; // number of undithered channels to output
+const uint16_t numberOfUnditheredchannels = 2; // number of undithered channels to output
 const uint8_t ditherChannelInputResolution = 16; // number of bits of input resolution for the dithered channels
 const uint16_t numberOfOutputChannels = numberOfDitherChannels + numberOfUnditheredchannels; // total number of channels to output
 const uint16_t numberInputChannels = 2 * numberOfDitherChannels + numberOfUnditheredchannels; // number of input channels to read from DMX
-const bool channelIsDitherChannel[numberOfOutputChannels] = { true, true, true, true, true, true, true, true, false, false, false, false, false, false, false, false }; // which channels to dither (true) or not (false)
+const bool channelIsDitherChannel[numberOfOutputChannels] = { true, true, true, true, true, true, true, true, false, false }; // which channels to dither (true) or not (false)
 
 // dither timing configuration
-const uint16_t dmxOutputFrequencyHz = 500; // DMX output update rate in Hz
+const uint16_t dmxOutputFrequencyHz = 800; // DMX output update rate in Hz
 const uint16_t ditherMinNonZeroFrequencyHz = 40; // minimum non-zero output frequency in Hz
 const uint32_t dmxSendUpdateInterval = 1000000 / dmxOutputFrequencyHz; // DMX frame interval in microseconds
 const uint32_t serialPrintIntervalMs = 1000;
@@ -268,32 +268,6 @@ void loop()
     if (nowMs - lastSerialPrintMs >= serialPrintIntervalMs) {
         lastSerialPrintMs = nowMs;
 
-        // Print the current assembled RGB values and the first 10 incoming DMX channels at the configured start address.
-        uint16_t red16 = ((uint16_t)getDMXValue(dmxInputAddress) << 8) | (uint16_t)getDMXValue(dmxInputAddress + 1);
-        uint16_t green16 = ((uint16_t)getDMXValue(dmxInputAddress + 2) << 8) | (uint16_t)getDMXValue(dmxInputAddress + 3);
-        uint16_t blue16 = ((uint16_t)getDMXValue(dmxInputAddress + 4) << 8) | (uint16_t)getDMXValue(dmxInputAddress + 5);
-
-        Serial.print("RGB=");
-        Serial.print(red16);
-        Serial.print(",");
-        Serial.print(green16);
-        Serial.print(",");
-        Serial.print(blue16);
-        Serial.print(" | frames/s=");
-        Serial.print(dmxGetDetectedFramesPerSecond());
-        Serial.print(" | invalidBreaks/s=");
-        Serial.print(dmxGetInvalidBreaksPerSecond());
-        Serial.print(" | rxBytes/s=");
-        Serial.print(dmxGetRxBytesPerSecond());
-        Serial.print(" | DMX[0..9]@addr=");
-        Serial.print(dmxInputAddress);
-        Serial.print(": ");
-        for (int i = 0; i < 10; ++i) {
-            Serial.print(getDMXValue(dmxInputAddress + i));
-            if (i < 9) {
-                Serial.print(", ");
-            }
-        }
-        Serial.println();
+        //add periodic debug prints here
     }
 }
