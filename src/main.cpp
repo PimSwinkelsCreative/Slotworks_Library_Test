@@ -1,6 +1,6 @@
 #include <Arduino.h>
-#include <esp_task_wdt.h>
 #include <Slotworks.h>
+#include <esp_task_wdt.h>
 
 int16_t counter = 0;
 
@@ -13,7 +13,18 @@ uint16_t dmxInputAddress = 1; // DMX channels are 1-based; channel 0 is the DMX 
 // DMX timing
 uint64_t lastDmxSendUpdate = 0;
 uint64_t lastSerialPrintMs = 0;
-const uint16_t dmxOutputFrequencyHz = 1000; // DMX output update rate in Hz
+
+// DMX Dither configuration :
+// currently configured for ETC Desire in 10 channel direct mode
+const uint16_t numberOfDitherChannels = 8; // number of dither channels to output
+const uint16_t numberOfUnditheredchannels = 10; // number of undithered channels to output
+const uint8_t ditherChannelInputResolution = 16; // number of bits of input resolution for the dithered channels
+const uint16_t numberOfOutputChannels = numberOfDitherChannels + numberOfUnditheredchannels; // total number of channels to output
+const uint16_t numberInputChannels = 2 * numberOfDitherChannels + numberOfUnditheredchannels; // number of input channels to read from DMX
+const bool channelIsDitherChannel[numberOfOutputChannels] = { true, true, true, true, true, true, true, true, false, false, false, false, false, false, false, false }; // which channels to dither (true) or not (false)
+
+// dither timing configuration
+const uint16_t dmxOutputFrequencyHz = 500; // DMX output update rate in Hz
 const uint16_t ditherMinNonZeroFrequencyHz = 40; // minimum non-zero output frequency in Hz
 const uint32_t dmxSendUpdateInterval = 1000000 / dmxOutputFrequencyHz; // DMX frame interval in microseconds
 const uint32_t serialPrintIntervalMs = 1000;
@@ -84,11 +95,9 @@ private:
     uint16_t minNonZeroValue = 0;
 };
 
-// One dither instance per channel. It converts a 16-bit brightness value to an 8-bit DMX channel while
+// One dither instance per dithered channel. It converts a 16-bit brightness value to an 8-bit DMX channel while
 // maintaining smooth dimming at low levels through temporal dithering.
-DitherTo8 redDither(16, ditherMinNonZeroFrequencyHz, dmxOutputFrequencyHz);
-DitherTo8 greenDither(16, ditherMinNonZeroFrequencyHz, dmxOutputFrequencyHz);
-DitherTo8 blueDither(16, ditherMinNonZeroFrequencyHz, dmxOutputFrequencyHz);
+DitherTo8* ditherChannels[numberOfDitherChannels];
 
 void onDMXReceived()
 {
@@ -183,7 +192,7 @@ void dmxUpdateStrobe()
     updateDMXOutput(5); // send 5 DMX data channels after the start code
 }
 
-void dmxOutputTask(void *parameter)
+void dmxOutputTask(void* parameter)
 {
     // This task runs continuously on core 0 and never yields to the scheduler. The default TWDT monitors idle
     // tasks, so we must reconfigure it to stop watching idle on this core and only feed it from this task.
@@ -200,24 +209,18 @@ void dmxOutputTask(void *parameter)
         if (now - lastDmxSendUpdate >= dmxSendUpdateInterval) {
             lastDmxSendUpdate = now;
 
-            // Read the latest incoming RGB values from the configured DMX input start address and convert each
-            // to a dithered 8-bit output value before writing the DMX output packet. Each 16-bit color is encoded
-            // as [MSB, LSB], so the first byte in the pair is the high byte and the second byte is the low byte.
-            uint16_t red16 = ((uint16_t)getDMXValue(dmxInputAddress) << 8) | (uint16_t)getDMXValue(dmxInputAddress + 1);
-            uint16_t green16 = ((uint16_t)getDMXValue(dmxInputAddress + 2) << 8) | (uint16_t)getDMXValue(dmxInputAddress + 3);
-            uint16_t blue16 = ((uint16_t)getDMXValue(dmxInputAddress + 4) << 8) | (uint16_t)getDMXValue(dmxInputAddress + 5);
-
-            dmxSetByte(dmxOutputAddress, redDither.convert(red16));
-            dmxSetByte(dmxOutputAddress + 1, greenDither.convert(green16));
-            dmxSetByte(dmxOutputAddress + 2, blueDither.convert(blue16));
-
-
-            // dmxSetByte(dmxOutputAddress, 100);
-            // dmxSetByte(dmxOutputAddress + 1, 101);
-            // dmxSetByte(dmxOutputAddress + 2, 102);
-
-
-            updateDMXOutput(3);
+            uint16_t inputChannelIndex = dmxInputAddress;
+            for (int i = 0; i < numberOfOutputChannels; i++) {
+                if (channelIsDitherChannel[i]) {
+                    uint16_t value16 = ((uint16_t)getDMXValue(inputChannelIndex) << 8) | (uint16_t)getDMXValue(inputChannelIndex + 1);
+                    dmxSetByte(dmxOutputAddress + i, ditherChannels[i]->convert(value16));
+                    inputChannelIndex += 2;
+                } else {
+                    dmxSetByte(dmxOutputAddress + i, getDMXValue(inputChannelIndex));
+                    inputChannelIndex += 1;
+                }
+            }
+            updateDMXOutput(numberOfOutputChannels); // send the configured number of DMX data channels after the start code
         }
 
         esp_task_wdt_reset();
@@ -231,16 +234,29 @@ void setup()
     setupSlotworks();
     setUserInterfacePollInterval(50); // poll the UI at 20Hz
 
+    // The Slotworks UI is used to configure the DMX input start address. The output address remains fixed at 1.
+    setUserInterfaceMode(DMXADDR, updateDMXAddress);
+    setDisplayValue(dmxInputAddress);
+
+    // perform a check to see if the output frame is short enough to be sent at the required output framerate
+    // 160us is reserved for the startframe, 44us for every byte to write to the output
+    if (dmxOutputFrequencyHz * (160 + numberOfOutputChannels * 44) >= 1000000) {
+        while (1) {
+            Serial.println("ERROR: OUTPUT DMX FRAME TOO LONG");
+            delay(1000);
+        }
+    }
+
+    // create the ditherchannels
+    for (int i = 0; i < numberOfDitherChannels; i++) {
+        ditherChannels[i] = new DitherTo8(ditherChannelInputResolution, ditherMinNonZeroFrequencyHz, dmxOutputFrequencyHz);
+    }
+
     // Use a separate RX UART and TX UART to avoid the shared-port corruption.
     // The board pins are fixed, so pass in the fixed DMX RX/TX pins explicitly.
     setupDMX(onDMXReceived, UART_NUM_1, UART_NUM_2, DMX_RX, DMX_TX, DMX_TX_EN);
     enableDMXOutput(true); // enable the DMX TX driver path once
-
     xTaskCreatePinnedToCore(dmxOutputTask, "dmxOutputTask", 10000, NULL, 1, NULL, 0);
-
-    // The Slotworks UI is used to configure the DMX input start address. The output address remains fixed at 1.
-    setUserInterfaceMode(DMXADDR, updateDMXAddress);
-    setDisplayValue(dmxInputAddress);
 }
 
 void loop()
