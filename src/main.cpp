@@ -79,7 +79,10 @@ public:
         acc += (value & mask);
 
         if (acc >= threshold) {
-            out++;
+            if(out<255){
+                //only increment if we are not at the max value already, otherwise we will wrap around to 0 and cause a flicker
+                out++;
+            }
             acc -= threshold;
         }
         previousValue = value;
