@@ -8,7 +8,7 @@ uint64_t lastUIUpdate = 0;
 uint16_t UIUpdateInterval = 50; // 20Hz ui update rate
 
 uint16_t dmxOutputAddress = 1; // address to write the values to
-uint16_t dmxInputAddress = 1; // DMX channels are 1-based; channel 0 is the DMX start code.
+uint16_t dmxInputAddress = 1;  // DMX channels are 1-based; channel 0 is the DMX start code.
 
 // DMX timing
 uint64_t lastDmxSendUpdate = 0;
@@ -16,16 +16,16 @@ uint64_t lastSerialPrintMs = 0;
 
 // DMX Dither configuration :
 // currently configured for ETC Desire in 10 channel direct mode
-const uint16_t numberOfDitherChannels = 8; // number of dither channels to output
-const uint16_t numberOfUnditheredchannels = 2; // number of undithered channels to output
-const uint8_t ditherChannelInputResolution = 16; // number of bits of input resolution for the dithered channels
-const uint16_t numberOfOutputChannels = numberOfDitherChannels + numberOfUnditheredchannels; // total number of channels to output
-const uint16_t numberInputChannels = 2 * numberOfDitherChannels + numberOfUnditheredchannels; // number of input channels to read from DMX
-const bool channelIsDitherChannel[numberOfOutputChannels] = { true, true, true, true, true, true, true, true, false, false }; // which channels to dither (true) or not (false)
+const uint16_t numberOfDitherChannels = 8;                                                                                  // number of dither channels to output
+const uint16_t numberOfUnditheredchannels = 2;                                                                              // number of undithered channels to output
+const uint8_t ditherChannelInputResolution = 16;                                                                            // number of bits of input resolution for the dithered channels
+const uint16_t numberOfOutputChannels = numberOfDitherChannels + numberOfUnditheredchannels;                                // total number of channels to output
+const uint16_t numberInputChannels = 2 * numberOfDitherChannels + numberOfUnditheredchannels;                               // number of input channels to read from DMX
+const bool channelIsDitherChannel[numberOfOutputChannels] = {true, true, true, true, true, true, true, true, false, false}; // which channels to dither (true) or not (false)
 
 // dither timing configuration
-const uint16_t dmxOutputFrequencyHz = 800; // DMX output update rate in Hz
-const uint16_t ditherMinNonZeroFrequencyHz = 40; // minimum non-zero output frequency in Hz
+const uint16_t dmxOutputFrequencyHz = 800;                             // DMX output update rate in Hz
+const uint16_t ditherMinNonZeroFrequencyHz = 40;                       // minimum non-zero output frequency in Hz
 const uint32_t dmxSendUpdateInterval = 1000000 / dmxOutputFrequencyHz; // DMX frame interval in microseconds
 const uint32_t serialPrintIntervalMs = 1000;
 
@@ -36,7 +36,8 @@ const uint32_t serialPrintIntervalMs = 1000;
 // Generic N-bit -> 8-bit temporal dither
 // =====================================================
 
-class DitherTo8 {
+class DitherTo8
+{
 public:
     DitherTo8(uint8_t inputBits, uint16_t minimumNonZeroFrequencyHz = 0, uint16_t outputFrequencyHz = 1000)
     {
@@ -50,12 +51,14 @@ public:
     {
         minNonZeroValue = 0;
 
-        if (outputFrequencyHz == 0 || minimumNonZeroFrequencyHz == 0) {
+        if (outputFrequencyHz == 0 || minimumNonZeroFrequencyHz == 0)
+        {
             return;
         }
 
         uint32_t value = ((uint32_t)minimumNonZeroFrequencyHz * threshold) / outputFrequencyHz;
-        if (value > threshold) {
+        if (value > threshold)
+        {
             value = threshold;
         }
         minNonZeroValue = (uint16_t)value;
@@ -65,7 +68,8 @@ public:
     {
         // The low-end clamp prevents values that would otherwise spend most of their time at 0 from visibly
         // flickering between 0 and 1 when the brightness is only a few counts above the floor.
-        if (value < minNonZeroValue) {
+        if (value < minNonZeroValue)
+        {
             acc = 0;
             previousValue = value;
             return 0;
@@ -78,9 +82,11 @@ public:
 
         acc += (value & mask);
 
-        if (acc >= threshold) {
-            if(out<255){
-                //only increment if we are not at the max value already, otherwise we will wrap around to 0 and cause a flicker
+        if (acc >= threshold)
+        {
+            if (out < 255)
+            {
+                // only increment if we are not at the max value already, otherwise we will wrap around to 0 and cause a flicker
                 out++;
             }
             acc -= threshold;
@@ -100,7 +106,7 @@ private:
 
 // One dither instance per dithered channel. It converts a 16-bit brightness value to an 8-bit DMX channel while
 // maintaining smooth dimming at low levels through temporal dithering.
-DitherTo8* ditherChannels[numberOfDitherChannels];
+DitherTo8 *ditherChannels[numberOfDitherChannels];
 
 void onDMXReceived()
 {
@@ -127,12 +133,14 @@ void updateDMXOutputRainbow()
 
     static uint8_t fadeState = 0;
 
-    switch (fadeState) {
+    switch (fadeState)
+    {
     case 0:
         blueValue -= fadeincrement;
         redValue += fadeincrement;
         greenValue = 0;
-        if (redValue >= 255 || blueValue <= 0) {
+        if (redValue >= 255 || blueValue <= 0)
+        {
             redValue = 255;
             blueValue = 0;
             fadeState = 1;
@@ -142,7 +150,8 @@ void updateDMXOutputRainbow()
         redValue -= fadeincrement;
         greenValue += fadeincrement;
         blueValue = 0;
-        if (greenValue >= 255 || redValue <= 0) {
+        if (greenValue >= 255 || redValue <= 0)
+        {
             greenValue = 255;
             redValue = 0;
             fadeState = 2;
@@ -152,7 +161,8 @@ void updateDMXOutputRainbow()
         greenValue -= fadeincrement;
         blueValue += fadeincrement;
         redValue = 0;
-        if (blueValue >= 255 || greenValue <= 0) {
+        if (blueValue >= 255 || greenValue <= 0)
+        {
             blueValue = 255;
             greenValue = 0;
             fadeState = 0;
@@ -179,9 +189,12 @@ void dmxUpdateStrobe()
     static int16_t masterValue = 0;
     static bool probeState = false;
 
-    if (probeState) {
+    if (probeState)
+    {
         masterValue = 100;
-    } else {
+    }
+    else
+    {
         masterValue = 0;
     }
 
@@ -195,37 +208,61 @@ void dmxUpdateStrobe()
     updateDMXOutput(5); // send 5 DMX data channels after the start code
 }
 
-void dmxOutputTask(void* parameter)
+#include "esp_task_wdt.h"
+#include "esp_idf_version.h"
+
+void dmxOutputTask(void *parameter)
 {
-    // This task runs continuously on core 0 and never yields to the scheduler. The default TWDT monitors idle
-    // tasks, so we must reconfigure it to stop watching idle on this core and only feed it from this task.
+    // This task runs continuously on core 0 and never yields to the scheduler.
+    // Configure the task watchdog so that this task is monitored.
+
+#if ESP_IDF_VERSION_MAJOR >= 5
+
+    // ESP-IDF 5.x / Arduino-ESP32 3.x
     esp_task_wdt_config_t wdtConfig = {
         .timeout_ms = 5000,
         .idle_core_mask = 0,
-        .trigger_panic = true
-    };
+        .trigger_panic = true};
+
     esp_task_wdt_reconfigure(&wdtConfig);
+
+#else
+
+    // ESP-IDF 4.x / Arduino-ESP32 2.x
+    esp_task_wdt_init(5, true);
+
+#endif
+
     esp_task_wdt_add(NULL);
 
-    while (true) {
+    while (true)
+    {
         uint64_t now = micros();
-        if (now - lastDmxSendUpdate >= dmxSendUpdateInterval) {
+
+        if (now - lastDmxSendUpdate >= dmxSendUpdateInterval)
+        {
             lastDmxSendUpdate = now;
 
             uint16_t inputChannelIndex = dmxInputAddress;
-            for (int i = 0; i < numberOfOutputChannels; i++) {
-                if (channelIsDitherChannel[i]) {
+
+            for (int i = 0; i < numberOfOutputChannels; i++)
+            {
+                if (channelIsDitherChannel[i])
+                {
                     uint16_t value16 = ((uint16_t)getDMXValue(inputChannelIndex) << 8) | (uint16_t)getDMXValue(inputChannelIndex + 1);
+
                     dmxSetByte(dmxOutputAddress + i, ditherChannels[i]->convert(value16));
+
                     inputChannelIndex += 2;
-                } else {
+                }
+                else
+                {
                     dmxSetByte(dmxOutputAddress + i, getDMXValue(inputChannelIndex));
                     inputChannelIndex += 1;
                 }
             }
-            updateDMXOutput(numberOfOutputChannels); // send the configured number of DMX data channels after the start code
+            updateDMXOutput(numberOfOutputChannels);
         }
-
         esp_task_wdt_reset();
     }
 }
@@ -243,15 +280,18 @@ void setup()
 
     // perform a check to see if the output frame is short enough to be sent at the required output framerate
     // 160us is reserved for the startframe, 44us for every byte to write to the output
-    if (dmxOutputFrequencyHz * (160 + numberOfOutputChannels * 44) >= 1000000) {
-        while (1) {
+    if (dmxOutputFrequencyHz * (160 + numberOfOutputChannels * 44) >= 1000000)
+    {
+        while (1)
+        {
             Serial.println("ERROR: OUTPUT DMX FRAME TOO LONG");
             delay(1000);
         }
     }
 
     // create the ditherchannels
-    for (int i = 0; i < numberOfDitherChannels; i++) {
+    for (int i = 0; i < numberOfDitherChannels; i++)
+    {
         ditherChannels[i] = new DitherTo8(ditherChannelInputResolution, ditherMinNonZeroFrequencyHz, dmxOutputFrequencyHz);
     }
 
@@ -268,9 +308,10 @@ void loop()
 
     updateUserInterface();
 
-    if (nowMs - lastSerialPrintMs >= serialPrintIntervalMs) {
+    if (nowMs - lastSerialPrintMs >= serialPrintIntervalMs)
+    {
         lastSerialPrintMs = nowMs;
 
-        //add periodic debug prints here
+        // add periodic debug prints here
     }
 }
