@@ -16,18 +16,29 @@ uint64_t lastSerialPrintMs = 0;
 
 // DMX Dither configuration :
 // currently configured for ETC Desire in 10 channel direct mode
-const uint16_t numberOfDitherChannels = 8;                                                                                  // number of dither channels to output
+const uint16_t numberOfDitherChannels = 10;                                                                                  // number of dither channels to output
 const uint16_t numberOfUnditheredchannels = 2;                                                                              // number of undithered channels to output
 const uint8_t ditherChannelInputResolution = 16;                                                                            // number of bits of input resolution for the dithered channels
 const uint16_t numberOfOutputChannels = numberOfDitherChannels + numberOfUnditheredchannels;                                // total number of channels to output
 const uint16_t numberInputChannels = 2 * numberOfDitherChannels + numberOfUnditheredchannels;                               // number of input channels to read from DMX
-const bool channelIsDitherChannel[numberOfOutputChannels] = {true, true, true, true, true, true, true, true, false, false}; // which channels to dither (true) or not (false)
+const bool channelIsDitherChannel[numberOfOutputChannels] = {true, true, true, true, true, true, true, true, true, true}; // which channels to dither (true) or not (false)
 
 // dither timing configuration
-const uint16_t dmxOutputFrequencyHz = 800;                             // DMX output update rate in Hz
-const uint16_t ditherMinNonZeroFrequencyHz = 40;                       // minimum non-zero output frequency in Hz
+const uint16_t dmxOutputFrequencyHz = 50;                             // DMX output update rate in Hz
+const uint16_t ditherMinNonZeroFrequencyHz = 60;                       // minimum non-zero output frequency in Hz
 const uint32_t dmxSendUpdateInterval = 1000000 / dmxOutputFrequencyHz; // DMX frame interval in microseconds
 const uint32_t serialPrintIntervalMs = 1000;
+
+// =====================================================
+// experiment day at Nick:
+const uint16_t fadePeriod = 10000; // fade length in milliseconds
+const uint16_t minFadevalue = 0;
+const uint16_t maxFadeValue = 1000;
+
+const uint16_t strobeFrequency = 15;                           // strobe frequency in Hz
+const uint32_t strobePeriodMicros = 1000000 / strobeFrequency; // strobe period in microseconds
+uint16_t strobeDepth = 0;                                      // current strobe value
+uint16_t strobePulse = 1000000 / dmxOutputFrequencyHz;         // pulse length of the strobe flash in microseconds
 
 // Dithering experiment: map a 16-bit color value to 8-bit DMX output.
 // The goal is to keep the apparent brightness smooth while still using a limited 8-bit channel depth.
@@ -245,22 +256,32 @@ void dmxOutputTask(void *parameter)
 
             uint16_t inputChannelIndex = dmxInputAddress;
 
-            for (int i = 0; i < numberOfOutputChannels; i++)
+            // update the outputs based on the received input data
+
+            // for (int i = 0; i < numberOfOutputChannels; i++)
+            // {
+            //     if (channelIsDitherChannel[i])
+            //     {
+            //         uint16_t value16 = ((uint16_t)getDMXValue(inputChannelIndex) << 8) | (uint16_t)getDMXValue(inputChannelIndex + 1);
+
+            //         dmxSetByte(dmxOutputAddress + i, ditherChannels[i]->convert(value16));
+
+            //         inputChannelIndex += 2;
+            //     }
+            //     else
+            //     {
+            //         dmxSetByte(dmxOutputAddress + i, getDMXValue(inputChannelIndex));
+            //         inputChannelIndex += 1;
+            //     }
+            // }
+
+            uint16_t fadevalue = map(millis() % fadePeriod, 0, fadePeriod, minFadevalue, maxFadeValue);
+
+            for (int i = 0; i < 8; i++)
             {
-                if (channelIsDitherChannel[i])
-                {
-                    uint16_t value16 = ((uint16_t)getDMXValue(inputChannelIndex) << 8) | (uint16_t)getDMXValue(inputChannelIndex + 1);
-
-                    dmxSetByte(dmxOutputAddress + i, ditherChannels[i]->convert(value16));
-
-                    inputChannelIndex += 2;
-                }
-                else
-                {
-                    dmxSetByte(dmxOutputAddress + i, getDMXValue(inputChannelIndex));
-                    inputChannelIndex += 1;
-                }
+                dmxSetByte(dmxOutputAddress + i, ditherChannels[i]->convert(fadevalue));
             }
+
             updateDMXOutput(numberOfOutputChannels);
         }
         esp_task_wdt_reset();
